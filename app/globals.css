@@ -240,6 +240,7 @@ h1, h2, h3, p { margin-top: 0; }
 .page-title { max-width: 850px; margin-bottom: 38px; }
 .page-title h1 { margin: 18px 0 12px; font-size: clamp(45px, 6vw, 72px); letter-spacing: -3px; line-height: 1; }
 .page-title p { color: var(--muted); font-size: 18px; line-height: 1.6; }
+.deck-shuffle { margin-top: 18px; }
 .cards-page { max-width: 930px; }
 .flashcard { width: 100%; min-height: 420px; padding: clamp(25px, 5vw, 48px); display: flex; flex-direction: column; color: var(--text); text-align: left; background: linear-gradient(150deg, var(--panel-2), var(--panel)); border: 1px solid var(--line); border-radius: 30px; box-shadow: var(--shadow); cursor: pointer; position: relative; overflow: hidden; }
 .flashcard::after { content: ""; position: absolute; right: -80px; bottom: -110px; width: 300px; height: 300px; border-radius: 50%; background: color-mix(in srgb, var(--ember) 9%, transparent); }

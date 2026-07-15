@@ -3,17 +3,37 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { flashcards, questions, sourceCoverage, type Question, type Topic } from "./studyData";
+import { flashcards, questions, sourceCoverage, type Flashcard, type Question, type Topic } from "./studyData";
 import { accountsConfigured, supabase } from "./supabase";
 
 type View = "home" | "quiz" | "results" | "flashcards" | "sources";
 type QuizKind = "baseline" | "practice" | "timed";
 type SavedExam = { kind: QuizKind; questionIds: number[]; answers: Record<number, number>; current: number; secondsLeft: number };
-type Attempt = { id: string; quiz_kind: QuizKind; score: number; total: number; percent: number; completed_at: string };
+type Attempt = { id: string; quiz_kind: QuizKind; score: number; total: number; percent: number; completed_at: string; question_ids?: number[] };
 type FeedbackKind = "content_error" | "unclear" | "source_question" | "feature_idea" | "technical";
 type FeedbackTarget = { origin: string; questionId?: number; prompt?: string; source?: string };
 
 const shuffle = <T,>(items: T[]) => [...items].sort(() => Math.random() - 0.5);
+const topics: Topic[] = ["Command & conduct", "Response readiness", "Work rules", "Fire operations", "EMS & HazMat", "Rescue & safety"];
+
+const buildBalancedQuiz = (count: number, recentlySeen: number[]) => {
+  const recent = new Set(recentlySeen);
+  const available = questions.filter((question) => !recent.has(question.id));
+  const source = available.length >= count ? available : questions;
+  const pools = topics.map((topic) => shuffle(source.filter((question) => question.topic === topic)));
+  const selected: Question[] = [];
+  while (selected.length < count && pools.some((pool) => pool.length)) {
+    for (const pool of pools) {
+      const next = pool.pop();
+      if (next) selected.push(next);
+      if (selected.length === count) break;
+    }
+  }
+  if (selected.length < count) {
+    selected.push(...shuffle(questions.filter((question) => !selected.some((item) => item.id === question.id))).slice(0, count - selected.length));
+  }
+  return shuffle(selected);
+};
 
 export default function Home() {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
@@ -27,6 +47,8 @@ export default function Home() {
   const [secondsLeft, setSecondsLeft] = useState(25 * 60);
   const [cardIndex, setCardIndex] = useState(0);
   const [cardOpen, setCardOpen] = useState(false);
+  const [cardDeck, setCardDeck] = useState<Flashcard[]>(flashcards);
+  const [recentQuestionIds, setRecentQuestionIds] = useState<number[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [email, setEmail] = useState("");
@@ -52,6 +74,10 @@ export default function Home() {
     if (draft) {
       try { setSavedExam(JSON.parse(draft)); } catch { localStorage.removeItem("master-prep-active-exam"); }
     }
+    const recent = localStorage.getItem("master-prep-recent-questions");
+    if (recent) {
+      try { setRecentQuestionIds(JSON.parse(recent)); } catch { localStorage.removeItem("master-prep-recent-questions"); }
+    }
   }, []);
 
   useEffect(() => {
@@ -65,12 +91,17 @@ export default function Home() {
     if (!supabase || !user) { setAttempts([]); return; }
     const loadAccount = async () => {
       const [{ data: history }, { data: progress }] = await Promise.all([
-        supabase.from("exam_attempts").select("id,quiz_kind,score,total,percent,completed_at").order("completed_at", { ascending: false }).limit(8),
+        supabase.from("exam_attempts").select("id,quiz_kind,score,total,percent,completed_at,question_ids").order("completed_at", { ascending: false }).limit(8),
         supabase.from("study_progress").select("active_exam,flashcard_index").eq("user_id", user.id).maybeSingle(),
       ]);
       if (history) {
         setAttempts(history as Attempt[]);
         if (history[0]) setLastScore((history[0] as Attempt).percent);
+        const cloudRecent = (history as Attempt[]).flatMap((attempt) => attempt.question_ids ?? []).filter((id, index, all) => all.indexOf(id) === index).slice(0, 75);
+        if (cloudRecent.length) {
+          setRecentQuestionIds(cloudRecent);
+          localStorage.setItem("master-prep-recent-questions", JSON.stringify(cloudRecent));
+        }
       }
       if (progress?.active_exam) {
         const cloudExam = progress.active_exam as SavedExam;
@@ -135,7 +166,7 @@ export default function Home() {
   }, [quiz, lastAnswers]);
 
   const startQuiz = (kind: QuizKind) => {
-    const selected = kind === "practice" ? shuffle(questions).slice(0, 10) : kind === "timed" ? shuffle(questions).slice(0, 25) : questions.slice(0, 25);
+    const selected = buildBalancedQuiz(kind === "practice" ? 10 : 25, recentQuestionIds);
     setQuizKind(kind);
     setQuiz(selected);
     setAnswers({});
@@ -164,13 +195,16 @@ export default function Home() {
     setLastScore(percent);
     localStorage.setItem("master-prep-score", String(percent));
     localStorage.removeItem("master-prep-active-exam");
+    const updatedRecent = [...quiz.map((question) => question.id), ...recentQuestionIds].filter((id, index, all) => all.indexOf(id) === index).slice(0, 75);
+    setRecentQuestionIds(updatedRecent);
+    localStorage.setItem("master-prep-recent-questions", JSON.stringify(updatedRecent));
     setSavedExam(null);
     if (supabase && user) {
       const misses = quiz.filter((question) => answers[question.id] !== question.answer).map((question) => question.topic);
       const { data } = await supabase.from("exam_attempts").insert({
         user_id: user.id, quiz_kind: quizKind, score: earned, total: quiz.length, percent,
         answers, question_ids: quiz.map((question) => question.id), missed_topics: misses,
-      }).select("id,quiz_kind,score,total,percent,completed_at").single();
+      }).select("id,quiz_kind,score,total,percent,completed_at,question_ids").single();
       await supabase.from("study_progress").upsert({ user_id: user.id, active_exam: null, flashcard_index: cardIndex, updated_at: new Date().toISOString() });
       if (data) setAttempts((currentAttempts) => [data as Attempt, ...currentAttempts].slice(0, 8));
     }
@@ -306,11 +340,13 @@ export default function Home() {
       )}
       {view === "flashcards" && (
         <Flashcards
+          cards={cardDeck}
           index={cardIndex}
           open={cardOpen}
           setIndex={(index) => { setCardIndex(index); setCardOpen(false); }}
           setOpen={setCardOpen}
           startQuiz={startQuiz}
+          shuffleDeck={() => { setCardDeck(shuffle(flashcards)); setCardIndex(0); setCardOpen(false); }}
           reportCard={(prompt, source) => openFeedback({ origin: "flashcard", prompt, source })}
         />
       )}
@@ -391,10 +427,10 @@ function Dashboard({ lastScore, startQuiz, setView, savedExam, resumeQuiz, user,
         <div className="hero-copy">
           <span className="eyebrow"><i /> BUILT FOR THE TOP 10</span>
           <h1>Train for the score<br />that earns the interview.</h1>
-          <p>Start with a 25-question baseline. Master Prep will identify weak topics, direct the next study session, and make every missed question useful.</p>
+          <p>Start with a fresh 25-question baseline drawn across every covered topic. Master Prep will identify weak areas and keep recent questions out of the next set.</p>
           <div className="hero-actions">
             <button className="primary" onClick={() => startQuiz("baseline")}>Build My Study Plan <span>→</span></button>
-            <span className="microcopy">25 questions · explanations · source references</span>
+            <span className="microcopy">{questions.length} source-traced questions · balanced random sets</span>
           </div>
         </div>
         <aside className="readiness-card">
@@ -416,10 +452,10 @@ function Dashboard({ lastScore, startQuiz, setView, savedExam, resumeQuiz, user,
         <div className="section-heading"><div><span>TRAINING MODULES</span><h2>Your next best rep.</h2></div><p>Retrieval beats rereading. Use short, repeated sessions and revisit misses after a delay.</p></div>
         <div className="module-grid">
           <button className="module-card ember" onClick={() => setView("flashcards")}>
-            <span className="module-icon">01</span><span className="tag">20 CARDS</span><h3>Flashcards</h3><p>Exact thresholds, assignments, and easily confused rules.</p><b>Start a deck →</b>
+            <span className="module-icon">01</span><span className="tag">{flashcards.length} CARDS</span><h3>Flashcards</h3><p>Two recall angles for every rule, with a fresh shuffle whenever needed.</p><b>Start a deck →</b>
           </button>
           <button className="module-card cyan" onClick={() => startQuiz("practice")}>
-            <span className="module-icon">02</span><span className="tag">10 QUESTIONS</span><h3>Practice Set</h3><p>Quick mixed retrieval with explanations and source checks.</p><b>Practice now →</b>
+            <span className="module-icon">02</span><span className="tag">10 QUESTIONS</span><h3>Practice Set</h3><p>A new balanced mix that avoids the most recently seen questions.</p><b>Practice now →</b>
           </button>
           <button className="module-card green" onClick={() => startQuiz("timed")}>
             <span className="module-icon">03</span><span className="tag">25-MIN TRAINING TIMER</span><h3>Timed Exam</h3><p>A full 25-question rehearsal. Timer is for practice, not an official limit.</p><b>Start timed exam →</b>
@@ -538,16 +574,16 @@ function Results({ score, total, quiz, answers, missedTopics, startQuiz, setView
   );
 }
 
-function Flashcards({ index, open, setIndex, setOpen, startQuiz, reportCard }: { index: number; open: boolean; setIndex: (index: number) => void; setOpen: (open: boolean) => void; startQuiz: (kind: QuizKind) => void; reportCard: (prompt: string, source: string) => void }) {
-  const card = flashcards[index];
+function Flashcards({ cards, index, open, setIndex, setOpen, startQuiz, shuffleDeck, reportCard }: { cards: Flashcard[]; index: number; open: boolean; setIndex: (index: number) => void; setOpen: (open: boolean) => void; startQuiz: (kind: QuizKind) => void; shuffleDeck: () => void; reportCard: (prompt: string, source: string) => void }) {
+  const card = cards[index] ?? cards[0];
   return (
     <div className="page cards-page">
-      <div className="page-title"><span className="eyebrow"><i /> ACTIVE RECALL</span><h1>Flashcards</h1><p>Say the full answer before revealing it. A flashcard only works when recall happens first.</p></div>
+      <div className="page-title"><span className="eyebrow"><i /> {cards.length}-CARD ACTIVE RECALL BANK</span><h1>Flashcards</h1><p>Each tested rule appears from two angles. Say the full answer before revealing it, then shuffle whenever the order starts to feel familiar.</p><button className="secondary deck-shuffle" onClick={shuffleDeck}>Shuffle all cards ↻</button></div>
       <button className={`flashcard ${open ? "open" : ""}`} onClick={() => setOpen(!open)} aria-label={open ? "Hide answer" : "Reveal answer"}>
-        <div className="flashcard-top"><span>{index + 1} / {flashcards.length}</span><small>{card[2]}</small></div>
+        <div className="flashcard-top"><span>{index + 1} / {cards.length}</span><small>{card[2]}</small></div>
         <div className="flashcard-content"><span>{open ? "ANSWER" : "PROMPT"}</span><h2>{open ? card[1] : card[0]}</h2><p>{open ? "Tap to return to the prompt" : "Commit to an answer, then tap to reveal"}</p></div>
       </button>
-      <div className="card-controls"><button className="secondary" onClick={() => setIndex((index - 1 + flashcards.length) % flashcards.length)}>← Previous</button><button className="primary" onClick={() => setIndex((index + 1) % flashcards.length)}>Next card →</button></div>
+      <div className="card-controls"><button className="secondary" onClick={() => setIndex((index - 1 + cards.length) % cards.length)}>← Previous</button><button className="primary" onClick={() => setIndex((index + 1) % cards.length)}>Next card →</button></div>
       <button className="report-link card-report" onClick={() => reportCard(card[0], card[2])}>Flag this flashcard for review</button>
       <div className="cards-finish"><p>Ready to test recognition under pressure?</p><button onClick={() => startQuiz("practice")}>Take a 10-question set →</button></div>
     </div>
