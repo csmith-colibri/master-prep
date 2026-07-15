@@ -212,7 +212,7 @@ export default function Home() {
     if (!supabase || !user || !feedbackTarget || !feedbackMessage.trim()) return;
     setFeedbackBusy(true);
     setFeedbackError("");
-    const { error } = await supabase.from("feedback").insert({
+    const feedbackPayload = {
       user_id: user.id,
       category: feedbackKind,
       message: feedbackMessage.trim(),
@@ -221,10 +221,25 @@ export default function Home() {
       content_prompt: feedbackTarget.prompt ?? null,
       source: feedbackTarget.source ?? null,
       app_version: "2026.07",
-    });
-    setFeedbackBusy(false);
-    if (error) setFeedbackError("Your note could not be sent. Please check the connection and try again.");
-    else setFeedbackSent(true);
+    };
+    const { error } = await supabase.from("feedback").insert(feedbackPayload);
+    if (error) {
+      setFeedbackBusy(false);
+      setFeedbackError("Your note could not be sent. Please check the connection and try again.");
+    }
+    else {
+      await supabase.functions.invoke("send-feedback-email", { body: {
+        category: feedbackKind,
+        message: feedbackMessage.trim(),
+        origin: feedbackTarget.origin,
+        questionId: feedbackTarget.questionId ?? null,
+        prompt: feedbackTarget.prompt ?? null,
+        source: feedbackTarget.source ?? null,
+        submitterEmail: user.email,
+      } });
+      setFeedbackBusy(false);
+      setFeedbackSent(true);
+    }
   };
 
   return (
