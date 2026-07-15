@@ -120,6 +120,36 @@ h1, h2, h3, p { margin-top: 0; }
 .attempt-list small { color: var(--muted); }
 .attempt-list p { color: var(--muted); font-size: 13px; }
 
+.feedback-fab { position: fixed; right: 22px; bottom: 22px; z-index: 45; min-height: 48px; padding: 0 17px; display: flex; align-items: center; gap: 8px; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; box-shadow: var(--shadow); font-size: 13px; font-weight: 850; cursor: pointer; }
+.feedback-fab:hover { border-color: var(--cyan); transform: translateY(-2px); }
+.feedback-fab span { color: var(--cyan); font-size: 18px; }
+.feedback-panel { width: min(650px, 100%); max-height: calc(100vh - 36px); overflow-y: auto; padding: clamp(25px, 5vw, 40px); position: relative; background: var(--bg-raised); border: 1px solid var(--line); border-radius: 26px; box-shadow: 0 30px 100px rgba(0, 0, 0, .45); }
+.feedback-panel h2 { margin: 18px 0 20px; font-size: clamp(30px, 6vw, 44px); line-height: 1.05; letter-spacing: -1.8px; }
+.feedback-context { margin: 0 0 22px; padding: 15px; display: grid; gap: 6px; background: color-mix(in srgb, var(--cyan) 8%, var(--panel)); border: 1px solid color-mix(in srgb, var(--cyan) 25%, var(--line)); border-radius: 15px; }
+.feedback-context span { color: var(--cyan); font-size: 9px; font-weight: 900; letter-spacing: 1.4px; }
+.feedback-context strong { font-size: 14px; line-height: 1.45; }
+.feedback-context small { color: var(--muted); }
+.feedback-panel form { display: grid; gap: 16px; }
+.feedback-panel fieldset { margin: 0; padding: 0; border: 0; }
+.feedback-panel legend, .feedback-panel label { margin-bottom: 8px; display: block; font-size: 12px; font-weight: 850; }
+.feedback-types { display: flex; flex-wrap: wrap; gap: 7px; }
+.feedback-types button { min-height: 38px; padding: 0 12px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; font-size: 12px; font-weight: 780; cursor: pointer; }
+.feedback-types button.selected { color: var(--text); border-color: var(--cyan); background: color-mix(in srgb, var(--cyan) 10%, var(--panel)); }
+.feedback-panel textarea { width: 100%; min-height: 135px; padding: 14px; resize: vertical; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 13px; font: inherit; line-height: 1.5; }
+.feedback-panel textarea:focus { outline: 3px solid color-mix(in srgb, var(--cyan) 35%, transparent); border-color: var(--cyan); }
+.feedback-submit { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+.feedback-submit small { color: var(--muted); }
+.feedback-signin { padding: 20px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; }
+.feedback-signin p { color: var(--muted); line-height: 1.55; }
+.feedback-success { text-align: center; }
+.feedback-success > b { width: 62px; height: 62px; margin: 0 auto 20px; display: grid; place-items: center; color: var(--green); background: color-mix(in srgb, var(--green) 12%, var(--panel)); border-radius: 50%; font-size: 28px; }
+.feedback-success .eyebrow { justify-content: center; }
+.feedback-success p { color: var(--muted); line-height: 1.6; }
+.report-link { margin: 20px auto 0; display: block; color: var(--muted); background: transparent; border: 0; font-size: 12px; font-weight: 760; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.report-link:hover { color: var(--cyan); }
+.review-card .report-link { margin: 14px 0 0; }
+.card-report { margin-top: 16px; }
+
 .section-block { padding: 36px 0 60px; }
 .section-heading { margin-bottom: 24px; display: flex; justify-content: space-between; align-items: end; gap: 30px; }
 .section-heading h2 { margin: 8px 0 0; font-size: clamp(28px, 3vw, 40px); letter-spacing: -1.7px; }
@@ -253,6 +283,7 @@ h1, h2, h3, p { margin-top: 0; }
   .brand small { display: none; }
   .theme-toggle span:last-child { display: none; }
   .account-button span:last-child { display: none; }
+  .feedback-fab { right: 14px; bottom: 14px; min-height: 45px; }
   .page { width: min(100% - 28px, 1240px); padding: 38px 0 60px; }
   .hero-copy h1 { font-size: 48px; letter-spacing: -2.7px; }
   .hero-actions, .hero-actions .primary { width: 100%; }
@@ -278,6 +309,8 @@ h1, h2, h3, p { margin-top: 0; }
   .source-list b { grid-column: 2; justify-self: start; }
   .flashcard { min-height: 390px; }
   .card-controls button { padding-left: 14px; padding-right: 14px; }
+  .feedback-submit { align-items: stretch; flex-direction: column; }
+  .feedback-submit .primary { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

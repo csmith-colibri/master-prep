@@ -10,6 +10,8 @@ type View = "home" | "quiz" | "results" | "flashcards" | "sources";
 type QuizKind = "baseline" | "practice" | "timed";
 type SavedExam = { kind: QuizKind; questionIds: number[]; answers: Record<number, number>; current: number; secondsLeft: number };
 type Attempt = { id: string; quiz_kind: QuizKind; score: number; total: number; percent: number; completed_at: string };
+type FeedbackKind = "content_error" | "unclear" | "source_question" | "feature_idea" | "technical";
+type FeedbackTarget = { origin: string; questionId?: number; prompt?: string; source?: string };
 
 const shuffle = <T,>(items: T[]) => [...items].sort(() => Math.random() - 0.5);
 
@@ -33,6 +35,11 @@ export default function Home() {
   const [savedExam, setSavedExam] = useState<SavedExam | null>(null);
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [syncState, setSyncState] = useState<"local" | "syncing" | "saved">("local");
+  const [feedbackTarget, setFeedbackTarget] = useState<FeedbackTarget | null>(null);
+  const [feedbackKind, setFeedbackKind] = useState<FeedbackKind>("content_error");
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [feedbackBusy, setFeedbackBusy] = useState(false);
+  const [feedbackSent, setFeedbackSent] = useState(false);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("master-prep-theme") as "dark" | "light" | null;
@@ -191,6 +198,31 @@ export default function Home() {
     setAttempts([]);
   };
 
+  const openFeedback = (target: FeedbackTarget = { origin: view }) => {
+    setFeedbackTarget(target);
+    setFeedbackKind(target.prompt ? "content_error" : "feature_idea");
+    setFeedbackMessage("");
+    setFeedbackSent(false);
+  };
+
+  const submitFeedback = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!supabase || !user || !feedbackTarget || !feedbackMessage.trim()) return;
+    setFeedbackBusy(true);
+    const { error } = await supabase.from("feedback").insert({
+      user_id: user.id,
+      category: feedbackKind,
+      message: feedbackMessage.trim(),
+      origin: feedbackTarget.origin,
+      question_id: feedbackTarget.questionId ?? null,
+      content_prompt: feedbackTarget.prompt ?? null,
+      source: feedbackTarget.source ?? null,
+      app_version: "2026.07",
+    });
+    setFeedbackBusy(false);
+    if (!error) setFeedbackSent(true);
+  };
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -219,6 +251,9 @@ export default function Home() {
       </header>
 
       {authOpen && <AccountPanel user={user} email={email} setEmail={setEmail} message={authMessage} busy={authBusy} configured={accountsConfigured} attempts={attempts} close={() => setAuthOpen(false)} submit={sendSignInLink} signOut={signOut} />}
+      {feedbackTarget && <FeedbackPanel target={feedbackTarget} user={user} kind={feedbackKind} setKind={setFeedbackKind} message={feedbackMessage} setMessage={setFeedbackMessage} busy={feedbackBusy} sent={feedbackSent} close={() => setFeedbackTarget(null)} submit={submitFeedback} signIn={() => { setFeedbackTarget(null); setAuthOpen(true); }} />}
+
+      <button className="feedback-fab" onClick={() => openFeedback({ origin: view })}><span aria-hidden="true">✎</span> Feedback</button>
 
       {view === "home" && <Dashboard lastScore={lastScore} startQuiz={startQuiz} setView={setView} savedExam={savedExam} resumeQuiz={resumeQuiz} user={user} openAccount={() => setAuthOpen(true)} attempts={attempts} />}
       {view === "quiz" && (
@@ -234,6 +269,7 @@ export default function Home() {
           goHome={goHome}
           syncState={syncState}
           signedIn={Boolean(user)}
+          reportQuestion={(question) => openFeedback({ origin: `quiz:${quizKind}`, questionId: question.id, prompt: question.prompt, source: question.source })}
         />
       )}
       {view === "results" && (
@@ -246,6 +282,7 @@ export default function Home() {
           startQuiz={startQuiz}
           setView={setView}
           goHome={goHome}
+          reportQuestion={(question) => openFeedback({ origin: "results", questionId: question.id, prompt: question.prompt, source: question.source })}
         />
       )}
       {view === "flashcards" && (
@@ -255,11 +292,41 @@ export default function Home() {
           setIndex={(index) => { setCardIndex(index); setCardOpen(false); }}
           setOpen={setCardOpen}
           startQuiz={startQuiz}
+          reportCard={(prompt, source) => openFeedback({ origin: "flashcard", prompt, source })}
         />
       )}
       {view === "sources" && <Sources startQuiz={startQuiz} />}
     </main>
   );
+}
+
+function FeedbackPanel({ target, user, kind, setKind, message, setMessage, busy, sent, close, submit, signIn }: {
+  target: FeedbackTarget; user: User | null; kind: FeedbackKind; setKind: (kind: FeedbackKind) => void; message: string; setMessage: (message: string) => void;
+  busy: boolean; sent: boolean; close: () => void; submit: (event: React.FormEvent) => void; signIn: () => void;
+}) {
+  const options: { value: FeedbackKind; label: string }[] = [
+    { value: "content_error", label: "Possible error" },
+    { value: "unclear", label: "Unclear wording" },
+    { value: "source_question", label: "Source question" },
+    { value: "feature_idea", label: "Study-tool idea" },
+    { value: "technical", label: "Technical problem" },
+  ];
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
+    <section className="feedback-panel" role="dialog" aria-modal="true" aria-labelledby="feedback-title">
+      <button className="modal-close" onClick={close} aria-label="Close">×</button>
+      {sent ? <div className="feedback-success"><b>✓</b><span className="eyebrow">FEEDBACK SAVED</span><h2 id="feedback-title">Thank you.</h2><p>Your note includes the study location and source context, so it can be reviewed efficiently.</p><button className="primary full-button" onClick={close}>Done</button></div> : <>
+        <span className="eyebrow"><i /> HELP IMPROVE MASTER PREP</span>
+        <h2 id="feedback-title">Tell us what needs attention.</h2>
+        {target.prompt && <div className="feedback-context"><span>AUTOMATICALLY ATTACHED</span><strong>{target.prompt}</strong>{target.source && <small>{target.source}</small>}</div>}
+        {!user ? <div className="feedback-signin"><p>Sign in first so the note is protected from spam and we can follow up if clarification is needed.</p><button className="primary full-button" onClick={signIn}>Sign in to send feedback →</button></div> : <form onSubmit={submit}>
+          <fieldset><legend>What type of feedback is this?</legend><div className="feedback-types">{options.map((option) => <button key={option.value} type="button" className={kind === option.value ? "selected" : ""} onClick={() => setKind(option.value)}>{option.label}</button>)}</div></fieldset>
+          <label htmlFor="feedback-message">What should we know?</label>
+          <textarea id="feedback-message" required minLength={4} maxLength={1200} value={message} onChange={(event) => setMessage(event.target.value)} placeholder={target.prompt ? "Describe what seems wrong or unclear…" : "Share an idea, content concern, or technical problem…"} />
+          <div className="feedback-submit"><small>Sent from {user.email}</small><button className="primary" disabled={busy || message.trim().length < 4}>{busy ? "Sending…" : "Send feedback →"}</button></div>
+        </form>}
+      </>}
+    </section>
+  </div>;
 }
 
 function AccountPanel({ user, email, setEmail, message, busy, configured, attempts, close, submit, signOut }: {
@@ -362,10 +429,11 @@ function Dashboard({ lastScore, startQuiz, setView, savedExam, resumeQuiz, user,
   );
 }
 
-function QuizScreen({ kind, quiz, current, answers, secondsLeft, setCurrent, setAnswers, finishQuiz, goHome, syncState, signedIn }: {
+function QuizScreen({ kind, quiz, current, answers, secondsLeft, setCurrent, setAnswers, finishQuiz, goHome, syncState, signedIn, reportQuestion }: {
   kind: QuizKind; quiz: Question[]; current: number; answers: Record<number, number>; secondsLeft: number;
   setCurrent: (index: number) => void; setAnswers: React.Dispatch<React.SetStateAction<Record<number, number>>>; finishQuiz: () => void; goHome: () => void;
   syncState: "local" | "syncing" | "saved"; signedIn: boolean;
+  reportQuestion: (question: Question) => void;
 }) {
   const question = quiz[current];
   const answered = Object.keys(answers).length;
@@ -401,15 +469,17 @@ function QuizScreen({ kind, quiz, current, answers, secondsLeft, setCurrent, set
             <button className="primary" onClick={finishQuiz}>Finish & build plan →</button>
           )}
         </div>
+        <button className="report-link" onClick={() => reportQuestion(question)}>Flag this question for review</button>
       </section>
       <p className="quiz-note">{signedIn ? syncState === "saved" ? "✓ Progress saved to your account" : syncState === "syncing" ? "Saving progress…" : "Saved on this device" : "Saved on this device · sign in from the dashboard for cross-device access"} · Explanations appear after submission.</p>
     </div>
   );
 }
 
-function Results({ score, total, quiz, answers, missedTopics, startQuiz, setView, goHome }: {
+function Results({ score, total, quiz, answers, missedTopics, startQuiz, setView, goHome, reportQuestion }: {
   score: number; total: number; quiz: Question[]; answers: Record<number, number>; missedTopics: [Topic, number][];
   startQuiz: (kind: QuizKind) => void; setView: (view: View) => void; goHome: () => void;
+  reportQuestion: (question: Question) => void;
 }) {
   const percent = Math.round((score / total) * 100);
   const missed = quiz.filter((question) => answers[question.id] !== question.answer);
@@ -440,6 +510,7 @@ function Results({ score, total, quiz, answers, missedTopics, startQuiz, setView
             <p className="your-answer">Your answer: {answers[question.id] === undefined ? "No answer" : question.options[answers[question.id]]}</p>
             <p className="correct-answer">Correct: {question.options[question.answer]}</p>
             <p>{question.explanation}</p>
+            <button className="report-link" onClick={() => reportQuestion(question)}>Flag this question for review</button>
           </article>
         ))}
       </section>
@@ -447,7 +518,7 @@ function Results({ score, total, quiz, answers, missedTopics, startQuiz, setView
   );
 }
 
-function Flashcards({ index, open, setIndex, setOpen, startQuiz }: { index: number; open: boolean; setIndex: (index: number) => void; setOpen: (open: boolean) => void; startQuiz: (kind: QuizKind) => void }) {
+function Flashcards({ index, open, setIndex, setOpen, startQuiz, reportCard }: { index: number; open: boolean; setIndex: (index: number) => void; setOpen: (open: boolean) => void; startQuiz: (kind: QuizKind) => void; reportCard: (prompt: string, source: string) => void }) {
   const card = flashcards[index];
   return (
     <div className="page cards-page">
@@ -457,6 +528,7 @@ function Flashcards({ index, open, setIndex, setOpen, startQuiz }: { index: numb
         <div className="flashcard-content"><span>{open ? "ANSWER" : "PROMPT"}</span><h2>{open ? card[1] : card[0]}</h2><p>{open ? "Tap to return to the prompt" : "Commit to an answer, then tap to reveal"}</p></div>
       </button>
       <div className="card-controls"><button className="secondary" onClick={() => setIndex((index - 1 + flashcards.length) % flashcards.length)}>← Previous</button><button className="primary" onClick={() => setIndex((index + 1) % flashcards.length)}>Next card →</button></div>
+      <button className="report-link card-report" onClick={() => reportCard(card[0], card[2])}>Flag this flashcard for review</button>
       <div className="cards-finish"><p>Ready to test recognition under pressure?</p><button onClick={() => startQuiz("practice")}>Take a 10-question set →</button></div>
     </div>
   );
