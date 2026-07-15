@@ -40,6 +40,7 @@ export default function Home() {
   const [feedbackMessage, setFeedbackMessage] = useState("");
   const [feedbackBusy, setFeedbackBusy] = useState(false);
   const [feedbackSent, setFeedbackSent] = useState(false);
+  const [feedbackError, setFeedbackError] = useState("");
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("master-prep-theme") as "dark" | "light" | null;
@@ -203,12 +204,14 @@ export default function Home() {
     setFeedbackKind(target.prompt ? "content_error" : "feature_idea");
     setFeedbackMessage("");
     setFeedbackSent(false);
+    setFeedbackError("");
   };
 
   const submitFeedback = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!supabase || !user || !feedbackTarget || !feedbackMessage.trim()) return;
     setFeedbackBusy(true);
+    setFeedbackError("");
     const { error } = await supabase.from("feedback").insert({
       user_id: user.id,
       category: feedbackKind,
@@ -220,7 +223,8 @@ export default function Home() {
       app_version: "2026.07",
     });
     setFeedbackBusy(false);
-    if (!error) setFeedbackSent(true);
+    if (error) setFeedbackError("Your note could not be sent. Please check the connection and try again.");
+    else setFeedbackSent(true);
   };
 
   return (
@@ -251,7 +255,7 @@ export default function Home() {
       </header>
 
       {authOpen && <AccountPanel user={user} email={email} setEmail={setEmail} message={authMessage} busy={authBusy} configured={accountsConfigured} attempts={attempts} close={() => setAuthOpen(false)} submit={sendSignInLink} signOut={signOut} />}
-      {feedbackTarget && <FeedbackPanel target={feedbackTarget} user={user} kind={feedbackKind} setKind={setFeedbackKind} message={feedbackMessage} setMessage={setFeedbackMessage} busy={feedbackBusy} sent={feedbackSent} close={() => setFeedbackTarget(null)} submit={submitFeedback} signIn={() => { setFeedbackTarget(null); setAuthOpen(true); }} />}
+      {feedbackTarget && <FeedbackPanel target={feedbackTarget} user={user} kind={feedbackKind} setKind={setFeedbackKind} message={feedbackMessage} setMessage={setFeedbackMessage} busy={feedbackBusy} sent={feedbackSent} error={feedbackError} close={() => setFeedbackTarget(null)} submit={submitFeedback} signIn={() => { setFeedbackTarget(null); setAuthOpen(true); }} />}
 
       <button className="feedback-fab" onClick={() => openFeedback({ origin: view })}><span aria-hidden="true">✎</span> Feedback</button>
 
@@ -300,9 +304,9 @@ export default function Home() {
   );
 }
 
-function FeedbackPanel({ target, user, kind, setKind, message, setMessage, busy, sent, close, submit, signIn }: {
+function FeedbackPanel({ target, user, kind, setKind, message, setMessage, busy, sent, error, close, submit, signIn }: {
   target: FeedbackTarget; user: User | null; kind: FeedbackKind; setKind: (kind: FeedbackKind) => void; message: string; setMessage: (message: string) => void;
-  busy: boolean; sent: boolean; close: () => void; submit: (event: React.FormEvent) => void; signIn: () => void;
+  busy: boolean; sent: boolean; error: string; close: () => void; submit: (event: React.FormEvent) => void; signIn: () => void;
 }) {
   const options: { value: FeedbackKind; label: string }[] = [
     { value: "content_error", label: "Possible error" },
@@ -322,6 +326,7 @@ function FeedbackPanel({ target, user, kind, setKind, message, setMessage, busy,
           <fieldset><legend>What type of feedback is this?</legend><div className="feedback-types">{options.map((option) => <button key={option.value} type="button" className={kind === option.value ? "selected" : ""} onClick={() => setKind(option.value)}>{option.label}</button>)}</div></fieldset>
           <label htmlFor="feedback-message">What should we know?</label>
           <textarea id="feedback-message" required minLength={4} maxLength={1200} value={message} onChange={(event) => setMessage(event.target.value)} placeholder={target.prompt ? "Describe what seems wrong or unclear…" : "Share an idea, content concern, or technical problem…"} />
+          {error && <p className="feedback-error" role="alert">{error}</p>}
           <div className="feedback-submit"><small>Sent from {user.email}</small><button className="primary" disabled={busy || message.trim().length < 4}>{busy ? "Sending…" : "Send feedback →"}</button></div>
         </form>}
       </>}
