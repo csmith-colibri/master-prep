@@ -209,7 +209,7 @@ export default function Home() {
     setLastScore(percent);
     localStorage.setItem("master-prep-score", String(percent));
     localStorage.removeItem("master-prep-active-exam");
-    const updatedRecent = [...quiz.map((question) => question.ruleId), ...recentQuestionIds].filter((id, index, all) => all.indexOf(id) === index).slice(0, 75);
+    const updatedRecent = [...quiz.map((question) => question.ruleId), ...recentQuestionIds].filter((id, index, all) => all.indexOf(id) === index).slice(0, 125);
     setRecentQuestionIds(updatedRecent);
     localStorage.setItem("master-prep-recent-questions", JSON.stringify(updatedRecent));
     setSavedExam(null);
@@ -470,7 +470,7 @@ function Dashboard({ lastScore, startQuiz, setView, savedExam, resumeQuiz, user,
             <span className="module-icon">02</span><span className="tag">10 QUESTIONS</span><h3>Practice Set</h3><p>Ten fresh questions from the full variation pool, with recent rules held back.</p><b>Practice now →</b>
           </button>
           <button className="module-card green" onClick={() => startQuiz("timed")}>
-            <span className="module-icon">03</span><span className="tag">25 QUESTIONS · 25 MIN</span><h3>Timed Exam</h3><p>A fresh full-length rehearsal from the same 290-variation pool. The timer is a training target, not an official limit.</p><b>Start timed exam →</b>
+            <span className="module-icon">03</span><span className="tag">25 QUESTIONS · 25 MIN</span><h3>Timed Exam</h3><p>A fresh full-length rehearsal from the same {questions.length}-variation pool. The timer is a training target, not an official limit.</p><b>Start timed exam →</b>
           </button>
         </div>
       </section>

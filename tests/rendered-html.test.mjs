@@ -21,9 +21,9 @@ test("server-renders the Master Prep study dashboard", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>Master Prep \| KFD Promotional Study<\/title>/i);
-  assert.match(html, /145(?:<!-- -->)? verified rules/i);
-  assert.match(html, /290(?:<!-- -->)? question variations/i);
-  assert.match(html, /290(?:<!-- -->)? CARDS/i);
+  assert.match(html, /234(?:<!-- -->)? verified rules/i);
+  assert.match(html, /468(?:<!-- -->)? question variations/i);
+  assert.match(html, /468(?:<!-- -->)? CARDS/i);
   assert.match(html, /Protect your exam progress/i);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/i);
 });
