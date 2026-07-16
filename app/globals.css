@@ -286,6 +286,9 @@ h1, h2, h3, p { margin-top: 0; }
   .section-heading, .result-hero, .source-guidance { align-items: flex-start; flex-direction: column; }
   .result-hero { display: flex; }
   .score-box { width: 100%; }
+  .feedback-fab { right: 14px; bottom: 14px; width: 48px; min-height: 48px; padding: 0; justify-content: center; }
+  .feedback-fab .feedback-label { display: none; }
+  .app-shell { padding-bottom: 76px; }
   .module-grid { grid-template-columns: 1fr; }
   .module-card { min-height: 240px; }
   .plan-grid { grid-template-columns: 1fr; }
@@ -298,9 +301,6 @@ h1, h2, h3, p { margin-top: 0; }
   .theme-toggle span:last-child { display: none; }
   .account-button span:last-child { display: none; }
   .account-button, .theme-toggle { width: 44px; height: 44px; padding: 0; justify-content: center; }
-  .feedback-fab { right: 14px; bottom: 14px; width: 48px; min-height: 48px; padding: 0; justify-content: center; }
-  .feedback-fab .feedback-label { display: none; }
-  .app-shell { padding-bottom: 76px; }
   .account-panel .eyebrow, .feedback-panel .eyebrow { max-width: calc(100% - 48px); line-height: 1.45; }
   .page { width: min(100% - 28px, 1240px); padding: 38px 0 60px; }
   .hero-copy h1 { font-size: 48px; letter-spacing: -2.7px; }
