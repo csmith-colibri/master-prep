@@ -16,6 +16,11 @@ type FeedbackTarget = { origin: string; questionId?: number; prompt?: string; so
 const shuffle = <T,>(items: T[]) => [...items].sort(() => Math.random() - 0.5);
 const topics: Topic[] = ["Command & conduct", "Response readiness", "Work rules", "Fire operations", "EMS & HazMat", "Rescue & safety"];
 const sourceFamily = (source: string) => source.startsWith("Article 3") ? "Article 3" : source.startsWith("Article 4") ? "Article 4" : source.startsWith("Pumping Apparatus") ? "Pumping Apparatus" : source.startsWith("Essentials") ? "Essentials" : "Company Officer";
+const examDate = new Date(2026, 6, 29);
+const sprintStart = new Date(2026, 6, 16);
+const dayMs = 24 * 60 * 60 * 1000;
+const localDateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
 const buildBalancedQuiz = (count: number, recentlySeen: number[], balanceBy: "topic" | "source" = "topic") => {
   const recent = new Set(recentlySeen);
@@ -80,7 +85,7 @@ export default function Home() {
     const savedTheme = localStorage.getItem("master-prep-theme") as "dark" | "light" | null;
     const systemLight = window.matchMedia("(prefers-color-scheme: light)").matches;
     setTheme(savedTheme ?? (systemLight ? "light" : "dark"));
-    const savedScore = localStorage.getItem("master-prep-score");
+    const savedScore = localStorage.getItem("master-prep-baseline-score");
     if (savedScore) setLastScore(Number(savedScore));
     const draft = localStorage.getItem("master-prep-active-exam");
     if (draft) {
@@ -103,12 +108,13 @@ export default function Home() {
     if (!supabase || !user) { setAttempts([]); return; }
     const loadAccount = async () => {
       const [{ data: history }, { data: progress }] = await Promise.all([
-        supabase.from("exam_attempts").select("id,quiz_kind,score,total,percent,completed_at,question_ids").order("completed_at", { ascending: false }).limit(8),
+        supabase.from("exam_attempts").select("id,quiz_kind,score,total,percent,completed_at,question_ids").order("completed_at", { ascending: false }).limit(100),
         supabase.from("study_progress").select("active_exam,flashcard_index").eq("user_id", user.id).maybeSingle(),
       ]);
       if (history) {
         setAttempts(history as Attempt[]);
-        if (history[0]) setLastScore((history[0] as Attempt).percent);
+        const latestBaseline = (history as Attempt[]).find((attempt) => attempt.quiz_kind === "baseline");
+        setLastScore(latestBaseline?.percent ?? null);
         const cloudRecent = (history as Attempt[]).flatMap((attempt) => attempt.question_ids ?? []).filter((id, index, all) => all.indexOf(id) === index).slice(0, 75);
         if (cloudRecent.length) {
           setRecentQuestionIds(cloudRecent);
@@ -220,8 +226,10 @@ export default function Home() {
     setLastAnswers(answers);
     const earned = quiz.reduce((total, question) => total + (answers[question.id] === question.answer ? 1 : 0), 0);
     const percent = Math.round((earned / quiz.length) * 100);
-    setLastScore(percent);
-    localStorage.setItem("master-prep-score", String(percent));
+    if (quizKind === "baseline") {
+      setLastScore(percent);
+      localStorage.setItem("master-prep-baseline-score", String(percent));
+    }
     localStorage.removeItem("master-prep-active-exam");
     const updatedRecent = [...quiz.map((question) => question.ruleId), ...recentQuestionIds].filter((id, index, all) => all.indexOf(id) === index).slice(0, 125);
     setRecentQuestionIds(updatedRecent);
@@ -234,7 +242,7 @@ export default function Home() {
         answers, question_ids: quiz.map((question) => question.id), missed_topics: misses,
       }).select("id,quiz_kind,score,total,percent,completed_at,question_ids").single();
       await supabase.from("study_progress").upsert({ user_id: user.id, active_exam: null, flashcard_index: cardIndex, updated_at: new Date().toISOString() });
-      if (data) setAttempts((currentAttempts) => [data as Attempt, ...currentAttempts].slice(0, 8));
+      if (data) setAttempts((currentAttempts) => [data as Attempt, ...currentAttempts].slice(0, 100));
     }
     showView("results");
   };
@@ -425,7 +433,7 @@ function AccountPanel({ user, email, setEmail, message, busy, configured, attemp
         <p className="account-email">{user.email}</p>
         <div className="account-status"><b>✓</b><div><strong>Cross-device saving is on</strong><span>You can safely close this tab and continue on another device.</span></div></div>
         <h3>Recent exams</h3>
-        <div className="attempt-list">{attempts.length ? attempts.map((attempt) => <div key={attempt.id}><span>{attempt.quiz_kind}</span><strong>{attempt.percent}%</strong><small>{new Date(attempt.completed_at).toLocaleDateString()}</small></div>) : <p>No completed exams yet.</p>}</div>
+        <div className="attempt-list">{attempts.length ? attempts.slice(0, 8).map((attempt) => <div key={attempt.id}><span>{attempt.quiz_kind}</span><strong>{attempt.percent}%</strong><small>{new Date(attempt.completed_at).toLocaleDateString()}</small></div>) : <p>No completed exams yet.</p>}</div>
         <button className="secondary full-button" onClick={signOut}>Sign out</button>
       </> : <>
         <span className="eyebrow"><i /> SAVE ACROSS DEVICES</span>
@@ -447,27 +455,78 @@ function Dashboard({ lastScore, startQuiz, setView, savedExam, resumeQuiz, user,
   lastScore: number | null; startQuiz: (kind: QuizKind) => void; setView: (view: View) => void; savedExam: SavedExam | null; resumeQuiz: () => void;
   user: User | null; openAccount: () => void; attempts: Attempt[];
 }) {
-  const readiness = lastScore ?? 0;
+  const today = startOfDay(new Date());
+  const daysLeft = Math.max(0, Math.ceil((examDate.getTime() - today.getTime()) / dayMs));
+  const sprintDay = Math.min(13, Math.max(1, Math.round((today.getTime() - sprintStart.getTime()) / dayMs) + 1));
+  const sprintAttempts = attempts.filter((attempt) => new Date(attempt.completed_at) >= sprintStart);
+  const baselineAttempts = attempts.filter((attempt) => attempt.quiz_kind === "baseline");
+  const timedAttempts = attempts.filter((attempt) => attempt.quiz_kind === "timed");
+  const readiness = baselineAttempts[0]?.percent ?? lastScore ?? 0;
+  const firstBaseline = baselineAttempts.at(-1)?.percent;
+  const improvement = firstBaseline === undefined ? null : readiness - firstBaseline;
+  const timedAverage = timedAttempts.length ? Math.round(timedAttempts.slice(0, 3).reduce((sum, attempt) => sum + attempt.percent, 0) / Math.min(3, timedAttempts.length)) : null;
+  const activeDateKeys = [...new Set(sprintAttempts.map((attempt) => localDateKey(new Date(attempt.completed_at))))];
+  const activeDates = new Set(activeDateKeys);
+  let streak = 0;
+  const streakCursor = new Date(today);
+  if (!activeDates.has(localDateKey(streakCursor))) streakCursor.setDate(streakCursor.getDate() - 1);
+  while (activeDates.has(localDateKey(streakCursor))) {
+    streak += 1;
+    streakCursor.setDate(streakCursor.getDate() - 1);
+  }
+  const missionSchedule: QuizKind[] = ["baseline", "practice", "timed", "practice", "practice", "baseline", "practice", "timed", "practice", "baseline", "timed", "practice", "practice"];
+  const missionKind = missionSchedule[sprintDay - 1];
+  const missionCopy = missionKind === "baseline"
+    ? { title: "Measure the whole field", detail: "Complete one 50-question source-balanced baseline.", reward: 100 }
+    : missionKind === "timed"
+      ? { title: "Rehearse under pressure", detail: "Complete one 25-question timed exam without notes.", reward: 60 }
+      : { title: daysLeft <= 2 ? "Keep recall sharp—not exhausted" : "Close one more gap", detail: "Complete one fresh 10-question mixed practice set.", reward: 25 };
+  const todaysAttempts = sprintAttempts.filter((attempt) => localDateKey(new Date(attempt.completed_at)) === localDateKey(today));
+  const missionComplete = todaysAttempts.some((attempt) => attempt.quiz_kind === missionKind);
+  const sprintPoints = sprintAttempts.reduce((total, attempt) => total + (attempt.quiz_kind === "baseline" ? 100 : attempt.quiz_kind === "timed" ? 60 : 25), 0) + activeDateKeys.length * 15;
+  const pointsTarget = 900;
+  const pointProgress = Math.min(100, Math.round((sprintPoints / pointsTarget) * 100));
+  const phase = daysLeft <= 0 ? "Exam day" : daysLeft <= 2 ? "Protect recall" : daysLeft <= 5 ? "Pressure test" : daysLeft <= 9 ? "Close the gaps" : "Build the benchmark";
+  const badges = [
+    { label: "Benchmark set", earned: baselineAttempts.length > 0 },
+    { label: "3-day response", earned: activeDateKeys.length >= 3 },
+    { label: "Timed 80+", earned: timedAttempts.some((attempt) => attempt.percent >= 80) },
+    { label: "Interview ready", earned: readiness >= 88 },
+  ];
   return (
     <div className="page dashboard">
       <section className="hero-grid">
         <div className="hero-copy">
-          <span className="eyebrow"><i /> BUILT FOR THE TOP 10</span>
+          <span className="eyebrow"><i /> JULY 29 EXAM SPRINT</span>
           <h1>Train for the score<br />that earns the interview.</h1>
-          <p>Start with a 50-question diagnostic balanced across every question-ready source. Master Prep will identify weak topics and source gaps, then keep recent rules out of the next set.</p>
+          <p>{daysLeft > 0 ? `${daysLeft} days remain.` : "Exam day is here."} Every session now has a job: measure, close gaps, rehearse under pressure, then protect recall before the test.</p>
           <div className="hero-actions">
-            <button className="primary" onClick={() => startQuiz("baseline")}>Build My Study Plan <span>→</span></button>
+            <button className="primary" onClick={() => startQuiz(missionKind)}>{missionComplete ? "Run a Bonus Rep" : "Start Today's Mission"} <span>→</span></button>
             <span className="microcopy">{canonicalQuestions.length} verified rules · {questions.length} question variations</span>
           </div>
         </div>
         <aside className="readiness-card">
           <div className="card-label">CURRENT READINESS</div>
           <div className="ring" style={{ "--score": `${readiness * 3.6}deg` } as React.CSSProperties}>
-            <div><strong>{lastScore === null ? "—" : `${lastScore}%`}</strong><span>{lastScore === null ? "Take baseline" : "Last score"}</span></div>
+            <div><strong>{readiness === 0 ? "—" : `${readiness}%`}</strong><span>{readiness === 0 ? "Take baseline" : "Baseline readiness"}</span></div>
           </div>
-          <p>{lastScore === null ? "Your first score becomes the benchmark—not a verdict." : readiness >= 88 ? "Strong benchmark. Shift toward timed mixed practice." : "Use the plan below your results to close the largest gaps first."}</p>
-          <div className="coverage-mini"><span>Source coverage</span><strong>3 of 5 ready</strong></div>
+          <p>{readiness === 0 ? "Your first score becomes the benchmark—not a verdict." : readiness >= 88 ? "Strong benchmark. Protect accuracy while rehearsing under time." : "Use each result to close the largest verified gaps first."}</p>
+          <div className="readiness-stats"><div><span>Since first baseline</span><strong>{improvement === null ? "—" : `${improvement >= 0 ? "+" : ""}${improvement} pts`}</strong></div><div><span>Last 3 timed</span><strong>{timedAverage === null ? "—" : `${timedAverage}%`}</strong></div></div>
         </aside>
+      </section>
+
+      <section className="sprint-panel" aria-labelledby="sprint-title">
+        <div className="sprint-countdown"><span>{daysLeft}</span><div><small>DAYS TO EXAM</small><strong id="sprint-title">Day {sprintDay} · {phase}</strong><p>Wednesday, July 29</p></div></div>
+        <div className={`daily-mission ${missionComplete ? "complete" : ""}`}>
+          <span className="mission-check" aria-hidden="true">{missionComplete ? "✓" : sprintDay}</span>
+          <div><small>TODAY&apos;S MISSION · +{missionCopy.reward} PTS</small><strong>{missionComplete ? "Mission complete" : missionCopy.title}</strong><p>{missionComplete ? "The required rep is logged. Stop or add a bonus drill if focus is still strong." : missionCopy.detail}</p></div>
+          <button className={missionComplete ? "secondary" : "primary"} onClick={() => startQuiz(missionKind)}>{missionComplete ? "Bonus rep" : "Start now"} →</button>
+        </div>
+        <div className="sprint-score">
+          <div className="score-heading"><span><strong>{sprintPoints}</strong> / {pointsTarget} sprint points</span><span>{streak} day streak</span></div>
+          <div className="sprint-track"><span style={{ width: `${pointProgress}%` }} /></div>
+          <div className="badge-row">{badges.map((badge) => <span key={badge.label} className={badge.earned ? "earned" : ""}>{badge.earned ? "✓" : "○"} {badge.label}</span>)}</div>
+        </div>
       </section>
 
       <section className="save-strip">
