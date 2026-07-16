@@ -165,6 +165,11 @@ export default function Home() {
     return [...counts.entries()].sort((a, b) => b[1] - a[1]);
   }, [quiz, lastAnswers]);
 
+  const showView = (nextView: View) => {
+    setView(nextView);
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
+  };
+
   const startQuiz = (kind: QuizKind) => {
     const selected = buildBalancedQuiz(kind === "practice" ? 10 : 25, recentQuestionIds);
     setQuizKind(kind);
@@ -172,8 +177,7 @@ export default function Home() {
     setAnswers({});
     setCurrent(0);
     setSecondsLeft(25 * 60);
-    setView("quiz");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    showView("quiz");
   };
 
   const resumeQuiz = () => {
@@ -185,7 +189,7 @@ export default function Home() {
     setAnswers(savedExam.answers);
     setCurrent(Math.min(savedExam.current, restored.length - 1));
     setSecondsLeft(savedExam.secondsLeft);
-    setView("quiz");
+    showView("quiz");
   };
 
   const finishQuiz = async () => {
@@ -208,13 +212,11 @@ export default function Home() {
       await supabase.from("study_progress").upsert({ user_id: user.id, active_exam: null, flashcard_index: cardIndex, updated_at: new Date().toISOString() });
       if (data) setAttempts((currentAttempts) => [data as Attempt, ...currentAttempts].slice(0, 8));
     }
-    setView("results");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    showView("results");
   };
 
   const goHome = () => {
-    setView("home");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    showView("home");
   };
 
   const sendSignInLink = async (event: React.FormEvent) => {
@@ -285,11 +287,11 @@ export default function Home() {
         </button>
         <nav aria-label="Primary navigation">
           <button className={view === "home" ? "active" : ""} onClick={goHome}>Home</button>
-          <button className={view === "flashcards" ? "active" : ""} onClick={() => setView("flashcards")}>Flashcards</button>
-          <button className={view === "sources" ? "active" : ""} onClick={() => setView("sources")}>Sources</button>
+          <button className={view === "flashcards" ? "active" : ""} onClick={() => showView("flashcards")}>Flashcards</button>
+          <button className={view === "sources" ? "active" : ""} onClick={() => showView("sources")}>Sources</button>
         </nav>
         <div className="header-actions">
-          <button className={`account-button ${user ? "signed-in" : ""}`} onClick={() => setAuthOpen(true)}>
+          <button className={`account-button ${user ? "signed-in" : ""}`} onClick={() => setAuthOpen(true)} aria-label={user ? "Open my Master Prep account" : "Sign in to Master Prep"}>
             <span aria-hidden="true">{user ? "✓" : "↗"}</span><span>{user ? "My account" : "Sign in"}</span>
           </button>
           <button
@@ -306,9 +308,9 @@ export default function Home() {
       {authOpen && <AccountPanel user={user} email={email} setEmail={setEmail} message={authMessage} busy={authBusy} configured={accountsConfigured} attempts={attempts} close={() => setAuthOpen(false)} submit={sendSignInLink} signOut={signOut} />}
       {feedbackTarget && <FeedbackPanel target={feedbackTarget} user={user} kind={feedbackKind} setKind={setFeedbackKind} message={feedbackMessage} setMessage={setFeedbackMessage} busy={feedbackBusy} sent={feedbackSent} error={feedbackError} close={() => setFeedbackTarget(null)} submit={submitFeedback} signIn={() => { setFeedbackTarget(null); setAuthOpen(true); }} />}
 
-      <button className="feedback-fab" onClick={() => openFeedback({ origin: view })}><span aria-hidden="true">✎</span> Feedback</button>
+      <button className="feedback-fab" onClick={() => openFeedback({ origin: view })} aria-label="Send feedback"><span aria-hidden="true">✎</span><span className="feedback-label">Feedback</span></button>
 
-      {view === "home" && <Dashboard lastScore={lastScore} startQuiz={startQuiz} setView={setView} savedExam={savedExam} resumeQuiz={resumeQuiz} user={user} openAccount={() => setAuthOpen(true)} attempts={attempts} />}
+      {view === "home" && <Dashboard lastScore={lastScore} startQuiz={startQuiz} setView={showView} savedExam={savedExam} resumeQuiz={resumeQuiz} user={user} openAccount={() => setAuthOpen(true)} attempts={attempts} />}
       {view === "quiz" && (
         <QuizScreen
           kind={quizKind}
@@ -333,7 +335,7 @@ export default function Home() {
           answers={lastAnswers}
           missedTopics={missedTopics}
           startQuiz={startQuiz}
-          setView={setView}
+          setView={showView}
           goHome={goHome}
           reportQuestion={(question) => openFeedback({ origin: "results", questionId: question.id, prompt: question.prompt, source: question.source })}
         />
