@@ -21,9 +21,9 @@ test("server-renders the Master Prep study dashboard", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>Master Prep \| KFD Promotional Study<\/title>/i);
-  assert.match(html, /145(?:<!-- -->)? source-traced questions/i);
+  assert.match(html, /145(?:<!-- -->)? verified rules/i);
+  assert.match(html, /290(?:<!-- -->)? question variations/i);
   assert.match(html, /290(?:<!-- -->)? CARDS/i);
-  assert.match(html, /balanced random sets/i);
   assert.match(html, /Protect your exam progress/i);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/i);
 });
@@ -35,9 +35,11 @@ test("keeps exam variation and flashcard depth in the product source", async () 
   ]);
 
   assert.match(page, /buildBalancedQuiz/);
+  assert.match(page, /selectedRules/);
   assert.match(page, /master-prep-recent-questions/);
   assert.match(page, /setCardDeck\(shuffle\(flashcards\)\)/);
-  assert.match(data, /questions\.flatMap/);
+  assert.match(data, /canonicalQuestions\.flatMap/);
+  assert.match(data, /applicationQuestions/);
   assert.match(data, /Article 4 §4\.3\.7/);
   assert.match(data, /Article 3 §3\.12\.5/);
 });

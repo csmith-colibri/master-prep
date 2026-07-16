@@ -8,6 +8,7 @@ export type Topic =
 
 export type Question = {
   id: number;
+  ruleId: number;
   topic: Topic;
   prompt: string;
   options: string[];
@@ -16,7 +17,9 @@ export type Question = {
   source: string;
 };
 
-const baseQuestions: Question[] = [
+type SourceQuestion = Omit<Question, "ruleId">;
+
+const baseQuestions: SourceQuestion[] = [
   {
     id: 1,
     topic: "Command & conduct",
@@ -464,7 +467,7 @@ const additionalSeeds: QuestionSeed[] = [
   ["Rescue & safety", "At a trench collapse, initial KFD companies operate at what level and may they enter an unsafe trench?", "Awareness level; they shall not enter", "Operations level; entry is allowed", "Technician level; entry is mandatory", "Command level; entry depends on seniority", "Initial companies operate at Awareness and do not enter an unsafe trench or excavation.", "Article 4 §4.4.2, PDF p. 57"],
 ];
 
-const seededQuestions: Question[] = additionalSeeds.map(([topic, prompt, correct, wrongA, wrongB, wrongC, explanation, source], index) => {
+const seededQuestions: SourceQuestion[] = additionalSeeds.map(([topic, prompt, correct, wrongA, wrongB, wrongC, explanation, source], index) => {
   const id = 31 + index;
   const answer = id % 4;
   const options = [wrongA, wrongB, wrongC];
@@ -472,11 +475,34 @@ const seededQuestions: Question[] = additionalSeeds.map(([topic, prompt, correct
   return { id, topic, prompt, options, answer, explanation, source };
 });
 
-export const questions: Question[] = [...baseQuestions, ...seededQuestions];
+export const canonicalQuestions: Question[] = [...baseQuestions, ...seededQuestions].map((question) => ({
+  ...question,
+  ruleId: question.id,
+}));
+
+const applicationLead: Record<Topic, string> = {
+  "Command & conduct": "Apply the KFD command-and-conduct rule to this situation:",
+  "Response readiness": "During an operational-readiness check, the crew must apply the cited rule:",
+  "Work rules": "A supervisor is checking whether this shift decision follows KFD policy:",
+  "Fire operations": "At an incident, the officer must choose the action that matches the operating guideline:",
+  "EMS & HazMat": "In an EMS or hazardous-materials scenario, apply the cited guideline:",
+  "Rescue & safety": "During a rescue or safety size-up, choose the rule-compliant response:",
+};
+
+const applicationQuestions: Question[] = canonicalQuestions.map((question) => ({
+  ...question,
+  id: 1000 + question.id,
+  prompt: `${applicationLead[question.topic]} ${question.prompt}`,
+}));
+
+// The expanded pool provides two testing forms per verified rule. Quiz selection
+// limits each exam to one form of a rule, so alternate wording never creates a
+// duplicate knowledge point inside the same set.
+export const questions: Question[] = [...canonicalQuestions, ...applicationQuestions];
 
 export type Flashcard = readonly [string, string, string];
 
-export const flashcards: Flashcard[] = questions.flatMap((question) => [
+export const flashcards: Flashcard[] = canonicalQuestions.flatMap((question) => [
   [question.prompt, question.options[question.answer], question.source] as Flashcard,
   [`Explain the rule behind: ${question.options[question.answer]}`, question.explanation, question.source] as Flashcard,
 ]);

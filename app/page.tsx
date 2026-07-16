@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { flashcards, questions, sourceCoverage, type Flashcard, type Question, type Topic } from "./studyData";
+import { canonicalQuestions, flashcards, questions, sourceCoverage, type Flashcard, type Question, type Topic } from "./studyData";
 import { accountsConfigured, supabase } from "./supabase";
 
 type View = "home" | "quiz" | "results" | "flashcards" | "sources";
@@ -18,19 +18,29 @@ const topics: Topic[] = ["Command & conduct", "Response readiness", "Work rules"
 
 const buildBalancedQuiz = (count: number, recentlySeen: number[]) => {
   const recent = new Set(recentlySeen);
-  const available = questions.filter((question) => !recent.has(question.id));
+  const available = questions.filter((question) => !recent.has(question.ruleId));
   const source = available.length >= count ? available : questions;
   const pools = topics.map((topic) => shuffle(source.filter((question) => question.topic === topic)));
   const selected: Question[] = [];
+  const selectedRules = new Set<number>();
   while (selected.length < count && pools.some((pool) => pool.length)) {
     for (const pool of pools) {
-      const next = pool.pop();
-      if (next) selected.push(next);
+      let next = pool.pop();
+      while (next && selectedRules.has(next.ruleId)) next = pool.pop();
+      if (next) {
+        selected.push(next);
+        selectedRules.add(next.ruleId);
+      }
       if (selected.length === count) break;
     }
   }
   if (selected.length < count) {
-    selected.push(...shuffle(questions.filter((question) => !selected.some((item) => item.id === question.id))).slice(0, count - selected.length));
+    for (const question of shuffle(questions)) {
+      if (selectedRules.has(question.ruleId)) continue;
+      selected.push(question);
+      selectedRules.add(question.ruleId);
+      if (selected.length === count) break;
+    }
   }
   return shuffle(selected);
 };
@@ -199,7 +209,7 @@ export default function Home() {
     setLastScore(percent);
     localStorage.setItem("master-prep-score", String(percent));
     localStorage.removeItem("master-prep-active-exam");
-    const updatedRecent = [...quiz.map((question) => question.id), ...recentQuestionIds].filter((id, index, all) => all.indexOf(id) === index).slice(0, 75);
+    const updatedRecent = [...quiz.map((question) => question.ruleId), ...recentQuestionIds].filter((id, index, all) => all.indexOf(id) === index).slice(0, 75);
     setRecentQuestionIds(updatedRecent);
     localStorage.setItem("master-prep-recent-questions", JSON.stringify(updatedRecent));
     setSavedExam(null);
@@ -432,7 +442,7 @@ function Dashboard({ lastScore, startQuiz, setView, savedExam, resumeQuiz, user,
           <p>Start with a fresh 25-question baseline drawn across every covered topic. Master Prep will identify weak areas and keep recent questions out of the next set.</p>
           <div className="hero-actions">
             <button className="primary" onClick={() => startQuiz("baseline")}>Build My Study Plan <span>→</span></button>
-            <span className="microcopy">{questions.length} source-traced questions · balanced random sets</span>
+            <span className="microcopy">{canonicalQuestions.length} verified rules · {questions.length} question variations</span>
           </div>
         </div>
         <aside className="readiness-card">
@@ -457,10 +467,10 @@ function Dashboard({ lastScore, startQuiz, setView, savedExam, resumeQuiz, user,
             <span className="module-icon">01</span><span className="tag">{flashcards.length} CARDS</span><h3>Flashcards</h3><p>Two recall angles for every rule, with a fresh shuffle whenever needed.</p><b>Start a deck →</b>
           </button>
           <button className="module-card cyan" onClick={() => startQuiz("practice")}>
-            <span className="module-icon">02</span><span className="tag">10 QUESTIONS</span><h3>Practice Set</h3><p>A new balanced mix that avoids the most recently seen questions.</p><b>Practice now →</b>
+            <span className="module-icon">02</span><span className="tag">10 QUESTIONS</span><h3>Practice Set</h3><p>Ten fresh questions from the full variation pool, with recent rules held back.</p><b>Practice now →</b>
           </button>
           <button className="module-card green" onClick={() => startQuiz("timed")}>
-            <span className="module-icon">03</span><span className="tag">25-MIN TRAINING TIMER</span><h3>Timed Exam</h3><p>A full 25-question rehearsal. Timer is for practice, not an official limit.</p><b>Start timed exam →</b>
+            <span className="module-icon">03</span><span className="tag">25 QUESTIONS · 25 MIN</span><h3>Timed Exam</h3><p>A fresh full-length rehearsal from the same 290-variation pool. The timer is a training target, not an official limit.</p><b>Start timed exam →</b>
           </button>
         </div>
       </section>
