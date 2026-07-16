@@ -225,6 +225,7 @@ h1, h2, h3, p { margin-top: 0; }
 .plan-card li small { margin-top: 3px; color: var(--muted); }
 .inline-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .topic-card > div { margin-top: 20px; }
+.topic-card .breakdown-label { display: block; margin-top: 30px; color: var(--cyan); }
 .topic-card p { margin-bottom: 8px; display: flex; justify-content: space-between; }
 .topic-card p small { color: var(--muted); }
 .topic-card div > div { height: 6px; background: var(--panel-2); border-radius: 6px; overflow: hidden; }

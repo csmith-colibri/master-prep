@@ -15,12 +15,14 @@ type FeedbackTarget = { origin: string; questionId?: number; prompt?: string; so
 
 const shuffle = <T,>(items: T[]) => [...items].sort(() => Math.random() - 0.5);
 const topics: Topic[] = ["Command & conduct", "Response readiness", "Work rules", "Fire operations", "EMS & HazMat", "Rescue & safety"];
+const sourceFamily = (source: string) => source.startsWith("Article 3") ? "Article 3" : source.startsWith("Article 4") ? "Article 4" : source.startsWith("Pumping Apparatus") ? "Pumping Apparatus" : source.startsWith("Essentials") ? "Essentials" : "Company Officer";
 
-const buildBalancedQuiz = (count: number, recentlySeen: number[]) => {
+const buildBalancedQuiz = (count: number, recentlySeen: number[], balanceBy: "topic" | "source" = "topic") => {
   const recent = new Set(recentlySeen);
   const available = questions.filter((question) => !recent.has(question.ruleId));
   const source = available.length >= count ? available : questions;
-  const pools = topics.map((topic) => shuffle(source.filter((question) => question.topic === topic)));
+  const groups = balanceBy === "source" ? [...new Set(questions.map((question) => sourceFamily(question.source)))] : topics;
+  const pools = groups.map((group) => shuffle(source.filter((question) => balanceBy === "source" ? sourceFamily(question.source) === group : question.topic === group)));
   const selected: Question[] = [];
   const selectedRules = new Set<number>();
   while (selected.length < count && pools.some((pool) => pool.length)) {
@@ -49,7 +51,7 @@ export default function Home() {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [view, setView] = useState<View>("home");
   const [quizKind, setQuizKind] = useState<QuizKind>("baseline");
-  const [quiz, setQuiz] = useState<Question[]>(questions.slice(0, 25));
+  const [quiz, setQuiz] = useState<Question[]>(questions.slice(0, 50));
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [current, setCurrent] = useState(0);
   const [lastScore, setLastScore] = useState<number | null>(null);
@@ -175,13 +177,25 @@ export default function Home() {
     return [...counts.entries()].sort((a, b) => b[1] - a[1]);
   }, [quiz, lastAnswers]);
 
+  const missedSources = useMemo(() => {
+    const counts = new Map<string, number>();
+    quiz.forEach((question) => {
+      if (lastAnswers[question.id] !== question.answer) {
+        const family = sourceFamily(question.source);
+        counts.set(family, (counts.get(family) ?? 0) + 1);
+      }
+    });
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [quiz, lastAnswers]);
+
   const showView = (nextView: View) => {
     setView(nextView);
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
   };
 
   const startQuiz = (kind: QuizKind) => {
-    const selected = buildBalancedQuiz(kind === "practice" ? 10 : 25, recentQuestionIds);
+    const count = kind === "baseline" ? 50 : kind === "practice" ? 10 : 25;
+    const selected = buildBalancedQuiz(count, recentQuestionIds, kind === "baseline" ? "source" : "topic");
     setQuizKind(kind);
     setQuiz(selected);
     setAnswers({});
@@ -344,6 +358,7 @@ export default function Home() {
           quiz={quiz}
           answers={lastAnswers}
           missedTopics={missedTopics}
+          missedSources={missedSources}
           startQuiz={startQuiz}
           setView={showView}
           goHome={goHome}
@@ -439,7 +454,7 @@ function Dashboard({ lastScore, startQuiz, setView, savedExam, resumeQuiz, user,
         <div className="hero-copy">
           <span className="eyebrow"><i /> BUILT FOR THE TOP 10</span>
           <h1>Train for the score<br />that earns the interview.</h1>
-          <p>Start with a fresh 25-question baseline drawn across every covered topic. Master Prep will identify weak areas and keep recent questions out of the next set.</p>
+          <p>Start with a 50-question diagnostic balanced across every question-ready source. Master Prep will identify weak topics and source gaps, then keep recent rules out of the next set.</p>
           <div className="hero-actions">
             <button className="primary" onClick={() => startQuiz("baseline")}>Build My Study Plan <span>→</span></button>
             <span className="microcopy">{canonicalQuestions.length} verified rules · {questions.length} question variations</span>
@@ -451,7 +466,7 @@ function Dashboard({ lastScore, startQuiz, setView, savedExam, resumeQuiz, user,
             <div><strong>{lastScore === null ? "—" : `${lastScore}%`}</strong><span>{lastScore === null ? "Take baseline" : "Last score"}</span></div>
           </div>
           <p>{lastScore === null ? "Your first score becomes the benchmark—not a verdict." : readiness >= 88 ? "Strong benchmark. Shift toward timed mixed practice." : "Use the plan below your results to close the largest gaps first."}</p>
-          <div className="coverage-mini"><span>Source coverage</span><strong>2 of 5 ready</strong></div>
+          <div className="coverage-mini"><span>Source coverage</span><strong>3 of 5 ready</strong></div>
         </aside>
       </section>
 
@@ -480,7 +495,7 @@ function Dashboard({ lastScore, startQuiz, setView, savedExam, resumeQuiz, user,
           <span className="eyebrow"><i /> RECOMMENDED LOOP</span>
           <h2>Diagnose. Drill. Retest.</h2>
           <ol>
-            <li><strong>Baseline</strong><span>Take 25 questions without notes.</span></li>
+            <li><strong>Baseline</strong><span>Take 50 source-balanced questions without notes.</span></li>
             <li><strong>Target</strong><span>Study the two weakest topic areas first.</span></li>
             <li><strong>Retrieve</strong><span>Use flashcards, then answer mixed questions.</span></li>
             <li><strong>Retest</strong><span>Wait, then repeat under a training timer.</span></li>
@@ -489,7 +504,7 @@ function Dashboard({ lastScore, startQuiz, setView, savedExam, resumeQuiz, user,
         <div className="source-alert">
           <span>IMPORTANT COVERAGE NOTE</span>
           <h3>This tool does not replace the full reading list.</h3>
-          <p>Questions here are grounded in the two supplied KFD articles. Three IFSTA books remain required study sources and were not provided.</p>
+          <p>Questions now cover both supplied KFD articles and verified pages from Pumping Apparatus. Essentials and Company Officer notes are received; textbook-page verification remains pending.</p>
           <button onClick={() => setView("sources")}>Review all five sources →</button>
         </div>
       </section>
@@ -544,8 +559,8 @@ function QuizScreen({ kind, quiz, current, answers, secondsLeft, setCurrent, set
   );
 }
 
-function Results({ score, total, quiz, answers, missedTopics, startQuiz, setView, goHome, reportQuestion }: {
-  score: number; total: number; quiz: Question[]; answers: Record<number, number>; missedTopics: [Topic, number][];
+function Results({ score, total, quiz, answers, missedTopics, missedSources, startQuiz, setView, goHome, reportQuestion }: {
+  score: number; total: number; quiz: Question[]; answers: Record<number, number>; missedTopics: [Topic, number][]; missedSources: [string, number][];
   startQuiz: (kind: QuizKind) => void; setView: (view: View) => void; goHome: () => void;
   reportQuestion: (question: Question) => void;
 }) {
@@ -567,7 +582,12 @@ function Results({ score, total, quiz, answers, missedTopics, startQuiz, setView
           </ol>
           <div className="inline-actions"><button className="primary" onClick={() => setView("flashcards")}>Start flashcards →</button><button className="secondary" onClick={() => startQuiz("practice")}>New practice set</button></div>
         </div>
-        <div className="topic-card"><span>TOPIC BREAKDOWN</span>{missedTopics.length ? missedTopics.map(([topic, count]) => <div key={topic}><p><strong>{topic}</strong><small>{count} missed</small></p><div><i style={{ width: `${Math.min(100, count * 28)}%` }} /></div></div>) : <p className="perfect">No misses. Retest later to confirm retention.</p>}</div>
+        <div className="topic-card">
+          <span>TOPIC BREAKDOWN</span>
+          {missedTopics.length ? missedTopics.map(([topic, count]) => <div key={topic}><p><strong>{topic}</strong><small>{count} missed</small></p><div><i style={{ width: `${Math.min(100, count * 20)}%` }} /></div></div>) : <p className="perfect">No misses. Retest later to confirm retention.</p>}
+          <span className="breakdown-label">SOURCE FOCUS</span>
+          {missedSources.length ? missedSources.map(([source, count]) => <div key={source}><p><strong>{source}</strong><small>{count} missed</small></p><div><i style={{ width: `${Math.min(100, count * 14)}%` }} /></div></div>) : <p className="perfect">No source gaps in this set.</p>}
+        </div>
       </section>
       <section className="review-section">
         <div className="section-heading"><div><span>REVIEW THE MISSES</span><h2>Turn errors into anchors.</h2></div><button className="text-button" onClick={goHome}>Back to dashboard →</button></div>
@@ -605,7 +625,7 @@ function Flashcards({ cards, index, open, setIndex, setOpen, startQuiz, shuffleD
 function Sources({ startQuiz }: { startQuiz: (kind: QuizKind) => void }) {
   return (
     <div className="page sources-page">
-      <div className="page-title"><span className="eyebrow"><i /> DECEMBER 2025 READING LIST</span><h1>Know what is—and isn’t—covered.</h1><p>Master Prep currently generates study content only from the two supplied KFD articles. Use the official IFSTA books for the remaining tested material.</p></div>
+      <div className="page-title"><span className="eyebrow"><i /> DECEMBER 2025 READING LIST</span><h1>Know what is—and isn’t—covered.</h1><p>Master Prep generates scored questions only from source material that can be verified. The two KFD articles and supplied Pumping Apparatus pages are ready; the condensed Essentials and Company Officer notes still need their referenced textbook pages.</p></div>
       <div className="source-list">
         {sourceCoverage.map((source, index) => <article key={source.title}><span>{String(index + 1).padStart(2, "0")}</span><div><h2>{source.title}</h2><p>{source.detail}</p></div><b className={source.tone}>{source.status}</b></article>)}
       </div>
