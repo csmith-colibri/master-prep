@@ -64,7 +64,7 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
 .eyebrow i { width: 18px; height: 3px; background: var(--ember); border-radius: 3px; }
 h1, h2, h3, p { margin-top: 0; }
 .hero-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, .58fr); gap: clamp(30px, 5vw, 78px); align-items: center; min-height: 570px; }
-.hero-copy h1 { max-width: 850px; margin: 24px 0; font-size: clamp(48px, 6.4vw, 82px); line-height: .98; letter-spacing: -4.6px; font-weight: 900; }
+.hero-copy h1 { max-width: 850px; margin: 24px 0; font-size: clamp(48px, 6.4vw, 82px); line-height: .98; letter-spacing: -3.6px; font-weight: 900; }
 .hero-copy > p { max-width: 690px; color: var(--muted); font-size: clamp(17px, 1.7vw, 21px); line-height: 1.65; }
 .hero-actions { margin-top: 34px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
 .primary, .secondary { min-height: 52px; padding: 0 20px; border-radius: 14px; font-weight: 850; cursor: pointer; transition: .18s ease; }
@@ -89,6 +89,7 @@ h1, h2, h3, p { margin-top: 0; }
 
 .save-strip { margin: -22px 0 48px; padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; gap: 20px; background: var(--panel); border: 1px solid var(--line); border-radius: 18px; }
 .save-strip > div { display: flex; align-items: center; gap: 12px; }
+.save-strip > div:last-child button { min-width: 180px; }
 .save-strip strong { display: block; font-size: 14px; }
 .save-strip p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
 .save-strip .secondary { min-height: 42px; }
@@ -271,11 +272,20 @@ h1, h2, h3, p { margin-top: 0; }
 .source-guidance p, .source-footnote { color: var(--muted); line-height: 1.6; }
 .source-footnote { margin-top: 20px; font-size: 12px; }
 
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
   .topbar nav { display: none; }
   .hero-grid, .strategy-grid { grid-template-columns: 1fr; }
-  .hero-grid { min-height: auto; }
-  .readiness-card { max-width: 520px; }
+  .hero-grid { min-height: auto; gap: 40px; align-items: stretch; }
+  .hero-copy h1 { max-width: 760px; font-size: clamp(50px, 8vw, 64px); line-height: 1.02; letter-spacing: -2.8px; }
+  .hero-copy > p { max-width: 760px; }
+  .readiness-card { width: 100%; max-width: none; }
+  .save-strip { margin: 24px 0 48px; align-items: stretch; flex-direction: column; }
+  .save-strip > div { width: 100%; }
+  .save-strip > div:last-child { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .save-strip .secondary, .save-strip .text-button { width: 100%; min-height: 44px; }
+  .section-heading, .result-hero, .source-guidance { align-items: flex-start; flex-direction: column; }
+  .result-hero { display: flex; }
+  .score-box { width: 100%; }
   .module-grid { grid-template-columns: 1fr; }
   .module-card { min-height: 240px; }
   .plan-grid { grid-template-columns: 1fr; }
