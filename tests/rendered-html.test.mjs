@@ -24,8 +24,8 @@ test("server-renders the Master Prep study dashboard", async () => {
   assert.match(html, /277(?:<!-- -->)? verified rules/i);
   assert.match(html, /554(?:<!-- -->)? question variations/i);
   assert.match(html, /554(?:<!-- -->)? CARDS/i);
-  assert.match(html, /50-question diagnostic/i);
-  assert.match(html, /3 of 5 ready/i);
+  assert.match(html, /50 source-balanced questions/i);
+  assert.match(html, /Review all five sources/i);
   assert.match(html, /Protect your exam progress/i);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/i);
 });
@@ -46,4 +46,22 @@ test("keeps exam variation and flashcard depth in the product source", async () 
   assert.match(data, /applicationQuestions/);
   assert.match(data, /Article 4 §4\.3\.7/);
   assert.match(data, /Article 3 §3\.12\.5/);
+});
+
+test("keeps the owner dashboard protected and activity-aware", async () => {
+  const [page, owner, migration] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/OwnerDashboard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/owner-dashboard.sql", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(page, /app_admins/);
+  assert.match(page, /isOwner && <button/);
+  assert.match(owner, /Owner access only/);
+  assert.match(owner, /PRIVATE · CHRISTINE ONLY/);
+  assert.match(owner, /Repeated gaps/i);
+  assert.match(migration, /is_app_admin/);
+  assert.match(migration, /activity_select_admin/);
+  assert.match(migration, /christinesmith\.colibri@gmail\.com/);
+  assert.doesNotMatch(page, /service_role|sb_secret_/i);
 });

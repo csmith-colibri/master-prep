@@ -3,10 +3,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
+import OwnerDashboard from "./OwnerDashboard";
 import { canonicalQuestions, flashcards, questions, sourceCoverage, type Flashcard, type Question, type Topic } from "./studyData";
 import { accountsConfigured, supabase } from "./supabase";
 
-type View = "home" | "quiz" | "results" | "flashcards" | "sources";
+type View = "home" | "quiz" | "results" | "flashcards" | "sources" | "owner";
 type QuizKind = "baseline" | "practice" | "timed";
 type SavedExam = { kind: QuizKind; questionIds: number[]; answers: Record<number, number>; current: number; secondsLeft: number };
 type Attempt = { id: string; quiz_kind: QuizKind; score: number; total: number; percent: number; completed_at: string; question_ids?: number[] };
@@ -67,6 +68,8 @@ export default function Home() {
   const [cardDeck, setCardDeck] = useState<Flashcard[]>(flashcards);
   const [recentQuestionIds, setRecentQuestionIds] = useState<number[]>([]);
   const [user, setUser] = useState<User | null>(null);
+  const [isOwner, setIsOwner] = useState(false);
+  const [ownerCheckComplete, setOwnerCheckComplete] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [authMessage, setAuthMessage] = useState("");
@@ -95,6 +98,12 @@ export default function Home() {
     if (recent) {
       try { setRecentQuestionIds(JSON.parse(recent)); } catch { localStorage.removeItem("master-prep-recent-questions"); }
     }
+    const syncOwnerHash = () => {
+      if (window.location.hash === "#owner") setView("owner");
+    };
+    syncOwnerHash();
+    window.addEventListener("hashchange", syncOwnerHash);
+    return () => window.removeEventListener("hashchange", syncOwnerHash);
   }, []);
 
   useEffect(() => {
@@ -105,12 +114,24 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!supabase || !user) { setAttempts([]); return; }
+    if (!supabase || !user) {
+      setAttempts([]);
+      setIsOwner(false);
+      setOwnerCheckComplete(true);
+      return;
+    }
     const loadAccount = async () => {
-      const [{ data: history }, { data: progress }] = await Promise.all([
+      setOwnerCheckComplete(false);
+      const now = new Date().toISOString();
+      const [{ data: history }, { data: progress }, { data: ownerRecord }] = await Promise.all([
         supabase.from("exam_attempts").select("id,quiz_kind,score,total,percent,completed_at,question_ids").order("completed_at", { ascending: false }).limit(100),
         supabase.from("study_progress").select("active_exam,flashcard_index").eq("user_id", user.id).maybeSingle(),
+        supabase.from("app_admins").select("user_id").eq("user_id", user.id).maybeSingle(),
+        supabase.from("profiles").upsert({ user_id: user.id, email: user.email ?? null, last_seen_at: now, updated_at: now }),
+        supabase.from("activity_events").insert({ user_id: user.id, event_type: "app_open", metadata: { path: window.location.hash || "home" } }),
       ]);
+      setIsOwner(Boolean(ownerRecord));
+      setOwnerCheckComplete(true);
       if (history) {
         setAttempts(history as Attempt[]);
         const latestBaseline = (history as Attempt[]).find((attempt) => attempt.quiz_kind === "baseline");
@@ -196,6 +217,11 @@ export default function Home() {
 
   const showView = (nextView: View) => {
     setView(nextView);
+    if (nextView === "owner") window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#owner`);
+    else if (window.location.hash === "#owner") window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    if (nextView === "flashcards" && supabase && user) {
+      void supabase.from("activity_events").insert({ user_id: user.id, event_type: "flashcards_opened", metadata: { card_index: cardIndex } });
+    }
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
   };
 
@@ -207,6 +233,9 @@ export default function Home() {
     setAnswers({});
     setCurrent(0);
     setSecondsLeft(25 * 60);
+    if (supabase && user) {
+      void supabase.from("activity_events").insert({ user_id: user.id, event_type: "quiz_started", metadata: { quiz_kind: kind, question_count: count } });
+    }
     showView("quiz");
   };
 
@@ -242,6 +271,7 @@ export default function Home() {
         answers, question_ids: quiz.map((question) => question.id), missed_topics: misses,
       }).select("id,quiz_kind,score,total,percent,completed_at,question_ids").single();
       await supabase.from("study_progress").upsert({ user_id: user.id, active_exam: null, flashcard_index: cardIndex, updated_at: new Date().toISOString() });
+      await supabase.from("activity_events").insert({ user_id: user.id, event_type: "quiz_completed", metadata: { quiz_kind: quizKind, score: earned, total: quiz.length, percent } });
       if (data) setAttempts((currentAttempts) => [data as Attempt, ...currentAttempts].slice(0, 100));
     }
     showView("results");
@@ -265,6 +295,8 @@ export default function Home() {
     await supabase?.auth.signOut();
     setAuthOpen(false);
     setAttempts([]);
+    setIsOwner(false);
+    showView("home");
   };
 
   const openFeedback = (target: FeedbackTarget = { origin: view }) => {
@@ -321,6 +353,7 @@ export default function Home() {
           <button className={view === "home" ? "active" : ""} onClick={goHome}>Home</button>
           <button className={view === "flashcards" ? "active" : ""} onClick={() => showView("flashcards")}>Flashcards</button>
           <button className={view === "sources" ? "active" : ""} onClick={() => showView("sources")}>Sources</button>
+          {isOwner && <button className={view === "owner" ? "active owner-nav" : "owner-nav"} onClick={() => showView("owner")}>Owner</button>}
         </nav>
         <div className="header-actions">
           <button className={`account-button ${user ? "signed-in" : ""}`} onClick={() => setAuthOpen(true)} aria-label={user ? "Open my Master Prep account" : "Sign in to Master Prep"}>
@@ -337,7 +370,7 @@ export default function Home() {
         </div>
       </header>
 
-      {authOpen && <AccountPanel user={user} email={email} setEmail={setEmail} message={authMessage} busy={authBusy} configured={accountsConfigured} attempts={attempts} close={() => setAuthOpen(false)} submit={sendSignInLink} signOut={signOut} />}
+      {authOpen && <AccountPanel user={user} email={email} setEmail={setEmail} message={authMessage} busy={authBusy} configured={accountsConfigured} attempts={attempts} isOwner={isOwner} close={() => setAuthOpen(false)} submit={sendSignInLink} signOut={signOut} openOwner={() => { setAuthOpen(false); showView("owner"); }} />}
       {feedbackTarget && <FeedbackPanel target={feedbackTarget} user={user} kind={feedbackKind} setKind={setFeedbackKind} message={feedbackMessage} setMessage={setFeedbackMessage} busy={feedbackBusy} sent={feedbackSent} error={feedbackError} close={() => setFeedbackTarget(null)} submit={submitFeedback} signIn={() => { setFeedbackTarget(null); setAuthOpen(true); }} />}
 
       <button className="feedback-fab" onClick={() => openFeedback({ origin: view })} aria-label="Send feedback"><span aria-hidden="true">✎</span><span className="feedback-label">Feedback</span></button>
@@ -386,6 +419,7 @@ export default function Home() {
         />
       )}
       {view === "sources" && <Sources startQuiz={startQuiz} />}
+      {view === "owner" && <OwnerDashboard ownerId={user?.id ?? null} isOwner={isOwner} checkComplete={ownerCheckComplete} openAccount={() => setAuthOpen(true)} goHome={goHome} />}
     </main>
   );
 }
@@ -420,9 +454,9 @@ function FeedbackPanel({ target, user, kind, setKind, message, setMessage, busy,
   </div>;
 }
 
-function AccountPanel({ user, email, setEmail, message, busy, configured, attempts, close, submit, signOut }: {
+function AccountPanel({ user, email, setEmail, message, busy, configured, attempts, isOwner, close, submit, signOut, openOwner }: {
   user: User | null; email: string; setEmail: (value: string) => void; message: string; busy: boolean; configured: boolean; attempts: Attempt[];
-  close: () => void; submit: (event: React.FormEvent) => void; signOut: () => void;
+  isOwner: boolean; close: () => void; submit: (event: React.FormEvent) => void; signOut: () => void; openOwner: () => void;
 }) {
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
     <section className="account-panel" role="dialog" aria-modal="true" aria-labelledby="account-title">
@@ -434,6 +468,7 @@ function AccountPanel({ user, email, setEmail, message, busy, configured, attemp
         <div className="account-status"><b>✓</b><div><strong>Cross-device saving is on</strong><span>You can safely close this tab and continue on another device.</span></div></div>
         <h3>Recent exams</h3>
         <div className="attempt-list">{attempts.length ? attempts.slice(0, 8).map((attempt) => <div key={attempt.id}><span>{attempt.quiz_kind}</span><strong>{attempt.percent}%</strong><small>{new Date(attempt.completed_at).toLocaleDateString()}</small></div>) : <p>No completed exams yet.</p>}</div>
+        {isOwner && <button className="primary full-button owner-account-button" onClick={openOwner}>Open Owner Dashboard →</button>}
         <button className="secondary full-button" onClick={signOut}>Sign out</button>
       </> : <>
         <span className="eyebrow"><i /> SAVE ACROSS DEVICES</span>
